@@ -11,7 +11,6 @@ def _split(df, split_ratio=0.2, seed=42):
     )
 
 
-# ---------- TASK A ----------
 def load_task_a_english(split_ratio=0.2):
     tweets = pd.read_csv("data/raw/english/test_a_tweets.tsv", sep="\t")
     labels = pd.read_csv("data/raw/english/test_a_labels.csv", header=None)
@@ -23,7 +22,6 @@ def load_task_a_english(split_ratio=0.2):
     return _split(df, split_ratio)
 
 
-# ---------- TASK B ----------
 def load_task_b_english(split_ratio=0.2):
     tweets = pd.read_csv("data/raw/english/test_b_tweets.tsv", sep="\t")
     labels = pd.read_csv("data/raw/english/test_b_labels.csv", header=None)
@@ -35,13 +33,17 @@ def load_task_b_english(split_ratio=0.2):
     return _split(df, split_ratio)
 
 
-# ---------- TASK C ----------
 def load_task_c_english(split_ratio=0.2):
     tweets = pd.read_csv("data/raw/english/test_c_tweets.tsv", sep="\t")
     labels = pd.read_csv("data/raw/english/test_c_labels.csv", header=None)
     labels.columns = ["id", "label"]
 
-    labels["label"] = labels["label"].map({"IND": 0, "GRP": 1, "OTH": 2})
+    labels["label"] = labels["label"].map({
+        "IND": 0,
+        "GRP": 1,
+        "OTH": 2
+    })
+
     df = tweets.merge(labels, on="id")
 
     return _split(df, split_ratio)

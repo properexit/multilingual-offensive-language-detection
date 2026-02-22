@@ -1,143 +1,157 @@
-# Offensive Language Detection (OffensEval 2020)
+# Multilingual Offensive Language Detection (OffensEval 2020)
 
-This project implements offensive language detection using the OffensEval 2020 (SemEval Task 12) dataset.
-It supports English (Tasks A, B, C) and Arabic (Task A), and demonstrates cross-lingual transfer learning using multilingual transformers.
+This project implements offensive language detection using the OffensEval 2020 dataset.
 
----
-
-## Tasks Supported
-
-| Language | Task | Description |
-|--------|------|-------------|
-| English | A | Offensive language identification |
-| English | B | Offense type (Targeted vs Untargeted) |
-| English | C | Offense target (Individual / Group / Other) |
-| Arabic | A | Offensive language identification |
+Supported:
+- English: Task A, B, C
+- Arabic: Task A
+- Baselines (Majority, TF-IDF + Logistic Regression)
+- Transformer models (BERT / XLM-R)
+- Zero-shot transfer (English → Arabic)
+- Few-shot transfer
+- Multi-task learning (Task A + B)
+- Parameter-efficient fine-tuning (LoRA / Freeze)
 
 ---
 
-## Models Used
+## 1. Setup
 
-**English**
-- BERT-mini  
-  `google/bert_uncased_L-2_H-128_A-2`
+### Clone the repository
 
-**Arabic / Multilingual**
-- XLM-R  
-  `xlm-roberta-base`
+Create virtual environment
 
----
+python3 -m venv venv
+source venv/bin/activate
 
-## Project Structure
+Install dependencies
 
-```
-cv_offensive/
-│
-├── main.py                 # Single entry point
-├── config/                 # Experiment configs
-├── datasets/               # Language-specific loaders
-├── models/                 # Baseline & transformer models
-├── training/               # Training logic
-├── utils/                  # Device, metrics, seed
-├── data/                   # (ignored) raw datasets
-├── requirements.txt
-└── README.md
-```
-
----
-
-## Setup
-
-### 1. Create Environment
-
-```
-python -m venv venv-offensive
-source venv-offensive/bin/activate
-```
-
-### 2. Install Dependencies
-
-```
 pip install -r requirements.txt
-```
 
 ---
 
-## How to Run
+## 2. Dataset
 
-All experiments are executed via `main.py`.
+Place data in the following structure:
 
-### English – Task A (Offensive Detection)
+data/raw/
+    english/
+        test_a_tweets.tsv
+        test_a_labels.csv
+        test_b_tweets.tsv
+        test_b_labels.csv
+        test_c_tweets.tsv
+        test_c_labels.csv
 
-```
+    arabic/
+        offenseval-ar-training-v1/
+            offenseval-ar-training-v1.tsv
+
+Arabic dataset: OffensEval 2020 Task 12 (Arabic Subtask A).
+
+---
+
+## 3. Running Baselines
+
+Majority + TF-IDF baseline (English Task A)
+
+python -m training.train_baseline
+
+---
+
+## 4. Transformer Training
+
+All experiments run via main.py.
+
+### English Task A
+
+python main.py --lang english --task A
+
+With stronger config:
+
 python main.py --lang english --task A --config config/english.yaml
-```
-
-### English – Task B (Offense Type)
-
-```
-python main.py --lang english --task B --config config/english.yaml
-```
-
-### English – Task C (Offense Target)
-
-```
-python main.py --lang english --task C --config config/english.yaml
-```
-
-### Arabic – Task A (Zero-shot)
-
-Evaluate XLM-R on Arabic without Arabic training.
-
-```
-python main.py --lang arabic --task A --mode zero-shot --config config/arabic.yaml
-```
-
-### Arabic – Task A (Few-shot Transfer Learning)
-
-English to Arabic transfer with 500 Arabic samples.
-
-```
-python main.py --lang arabic --task A --mode few-shot --k 500 --config config/arabic.yaml
-```
 
 ---
 
-## Device Selection
+### English Task B
 
-By default, the system auto-selects the best available device:
-- CUDA (GPU)
-- MPS (Apple Silicon)
-- CPU
+python main.py --lang english --task B --config config/english.yaml
 
-To force a device manually:
+---
 
-```
---device cpu
---device cuda
---device mps
-```
+### English Task C
+
+python main.py --lang english --task C --config config/english.yaml
+
+---
+
+## 5. Multi-task Learning (Task A + B)
+
+python main.py --multitask
+
+This trains a shared encoder with two classification heads.
+
+---
+
+## 6. Arabic Experiments
+
+### Zero-shot (English-trained XLM-R → Arabic)
+
+python main.py --lang arabic --task A --mode zero-shot
+
+---
+
+### Few-shot Transfer
+
+python main.py --lang arabic --task A --mode few-shot --k 500
+
+This:
+1. Pretrains on English
+2. Fine-tunes on k Arabic samples
+
+---
+
+## 7. Parameter-Efficient Fine-Tuning (PEFT)
+
+### Freeze encoder
+
+python main.py --lang english --task A --peft freeze
+
+### LoRA
+
+python main.py --lang english --task A --peft lora
+
+Arabic example:
+
+python main.py --lang arabic --task A --mode few-shot --k 500 --peft lora
+
+---
+
+## 8. Configuration
+
+Hyperparameters are controlled via YAML files.
 
 Example:
 
-```
+config/base.yaml
+config/english.yaml
+config/arabic.yaml
+
+Typical parameters:
+- batch_size
+- epochs
+- learning_rate
+- max_length
+- class_weighted
+
+---
+
+## 9. Device Selection
+
+Auto-detects:
+- CUDA (if available)
+- Apple MPS
+- CPU
+
+Force device manually:
+
 python main.py --lang english --task A --device cpu
-```
-
----
-
-## Final Results (Macro F1)
-
-| Language | Task | Setting | Macro F1 |
-|--------|------|---------|----------|
-| English | A | Supervised | 0.91 |
-| Arabic | A | Zero-shot | 0.45 |
-| Arabic | A | Few-shot (500) + transfer | 0.63 |
-
----
-
-## Notes
-
-- Arabic Tasks B and C are not supported due to lack of labeled data.
-- Few-shot Arabic experiments use English pretraining for transfer learning.
-- Raw datasets are excluded from the repository (see `.gitignore`).

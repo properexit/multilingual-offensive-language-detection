@@ -1,19 +1,7 @@
-# Core
-python>=3.9
-
-# Deep Learning
-torch>=2.0
-transformers>=4.36
-huggingface-hub>=0.19
-
-# Data & ML
-numpy>=1.23
-pandas>=1.5
-scikit-learn>=1.2
-
-# Utilities
-pyyaml>=6.0
-tqdm>=4.64
-
-# Optional (safe to keep)
-sentencepiece>=0.1.99
+torch==2.10.0
+transformers==5.2.0
+peft==0.18.1
+scikit-learn==1.8.0
+pandas==3.0.1
+PyYAML==6.0.3
+tqdm==4.67.3

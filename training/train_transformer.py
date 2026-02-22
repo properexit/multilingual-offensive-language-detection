@@ -22,41 +22,58 @@ def train_transformer(
     config,
     device,
     model=None,
-    return_model=False
+    return_model=False,
+    peft_type=None
 ):
     """
-    Unified transformer training loop.
-    Supports:
-    - English finetuning
+    Main training function for transformer-based models.
+    Works for:
+    - English supervised training
     - Arabic zero-shot
-    - Arabic few-shot with English pretraining (via model reuse)
+    - Arabic few-shot (with optional transfer)
+    - PEFT (LoRA / freeze)
     """
 
-    # ------------------
-    # CONFIG
-    # ------------------
+    # read basic training settings from config
     batch_size = int(config.get("batch_size", 8))
     epochs = int(config.get("epochs", 1))
     lr = float(config.get("learning_rate", 2e-5))
     max_len = int(config.get("max_length", 128))
     class_weighted = config.get("class_weighted", False)
 
-    # ------------------
-    # TOKENIZER + MODEL
-    # ------------------
+    # load tokenizer + model (unless already passed)
     if model is None:
-        tokenizer, model = load_transformer(model_name, num_labels)
+        tokenizer, model = load_transformer(
+            model_name,
+            num_labels,
+            peft_type=peft_type
+        )
         model.to(device)
     else:
-        tokenizer = load_transformer(model_name, num_labels)[0]
+        # only reload tokenizer
+        tokenizer = load_transformer(
+            model_name,
+            num_labels,
+            peft_type=None
+        )[0]
 
-    optimizer = AdamW(model.parameters(), lr=lr)
+    # optional: freeze encoder layers
+    if peft_type == "freeze":
+        print("Freezing encoder weights (only classifier will train)")
+        for name, param in model.named_parameters():
+            if "classifier" not in name:
+                param.requires_grad = False
 
+    # only update parameters that require grad
+    optimizer = AdamW(
+        filter(lambda p: p.requires_grad, model.parameters()),
+        lr=lr
+    )
+
+    # choose dataset depending on language
     Dataset = TweetDataset if language == "english" else ArabicTweetDataset
 
-    # ------------------
-    # FEW-SHOT SAMPLING
-    # ------------------
+    # simulate few-shot by sampling smaller subset
     if mode == "few-shot" and few_shot_k is not None:
         train_df, _ = train_test_split(
             train_df,
@@ -71,12 +88,10 @@ def train_transformer(
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
     dev_loader = DataLoader(dev_ds, batch_size=batch_size)
 
-    # ------------------
-    # LOSS FUNCTION
-    # ------------------
+    # optionally use class weights for imbalance
     if class_weighted:
         weights = compute_class_weight(
-            "balanced",
+            class_weight="balanced",
             classes=np.unique(train_df["label"]),
             y=train_df["label"]
         )
@@ -85,43 +100,49 @@ def train_transformer(
     else:
         loss_fn = torch.nn.CrossEntropyLoss()
 
-    # ------------------
-    # TRAINING
-    # ------------------
+    # training (skip if zero-shot)
     if mode != "zero-shot":
         model.train()
+
         for epoch in range(epochs):
             total_loss = 0.0
+
             for batch in train_loader:
                 optimizer.zero_grad()
 
-                logits = model(
+                outputs = model(
                     input_ids=batch["input_ids"].to(device),
                     attention_mask=batch["attention_mask"].to(device)
-                ).logits
+                )
 
-                loss = loss_fn(logits, batch["labels"].to(device))
+                logits = outputs.logits
+                labels = batch["labels"].to(device)
+
+                loss = loss_fn(logits, labels)
                 loss.backward()
                 optimizer.step()
 
                 total_loss += loss.item()
 
-            print(f"Epoch {epoch+1} | Loss: {total_loss / len(train_loader):.4f}")
+            avg_loss = total_loss / len(train_loader)
+            print("Epoch", epoch + 1, "loss:", round(avg_loss, 4))
 
-    # ------------------
-    # EVALUATION
-    # ------------------
+    # evaluation
     model.eval()
-    preds, gold = [], []
+    preds = []
+    gold = []
 
     with torch.no_grad():
         for batch in dev_loader:
-            logits = model(
+            outputs = model(
                 input_ids=batch["input_ids"].to(device),
                 attention_mask=batch["attention_mask"].to(device)
-            ).logits
+            )
 
-            preds.extend(torch.argmax(logits, 1).cpu().numpy())
+            logits = outputs.logits
+            predictions = torch.argmax(logits, dim=1)
+
+            preds.extend(predictions.cpu().numpy())
             gold.extend(batch["labels"].numpy())
 
     evaluate_classification(gold, preds)

@@ -1,8 +1,19 @@
+import warnings
+warnings.filterwarnings("ignore")
+
+import os
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "true"
+
+from transformers import logging
+logging.set_verbosity_error()
+
 import argparse
 import yaml
 
 from utils.device import get_device
 from training.train_transformer import train_transformer
+from training.train_multitask import train_multitask
 
 from datasets.english.loaders import (
     load_task_a_english,
@@ -20,21 +31,44 @@ MODEL_MAP = {
 
 def main():
     parser = argparse.ArgumentParser(
-        description="OffensEval 2020 – Multilingual Offensive Language Detection"
+        description="Offensive language detection (English + Arabic)"
     )
 
-    parser.add_argument("--lang", required=True, choices=["english", "arabic"])
-    parser.add_argument("--task", required=True, choices=["A", "B", "C"])
+    parser.add_argument("--lang", choices=["english", "arabic"])
+    parser.add_argument("--task", choices=["A", "B", "C"])
+
     parser.add_argument(
         "--mode",
         default="finetune",
         choices=["finetune", "zero-shot", "few-shot"]
     )
+
     parser.add_argument("--k", type=int, default=None)
     parser.add_argument("--config", default="config/base.yaml")
     parser.add_argument("--device", default="auto")
 
+    parser.add_argument(
+        "--peft",
+        choices=["lora", "freeze"],
+        default=None
+    )
+
+    parser.add_argument(
+        "--multitask",
+        action="store_true",
+        help="Run English multi-task (A + B)"
+    )
+
     args = parser.parse_args()
+
+    # run multi-task separately
+    if args.multitask:
+        print("Running multi-task training (English A + B)")
+        train_multitask()
+        return
+
+    if args.lang is None or args.task is None:
+        parser.error("--lang and --task are required unless --multitask is used.")
 
     with open(args.config) as f:
         config = yaml.safe_load(f)
@@ -44,20 +78,22 @@ def main():
         force_device=None if args.device == "auto" else args.device
     )
 
-    print(f"Device: {device}")
-    print(f"Language: {args.lang} | Task: {args.task} | Mode: {args.mode}")
+    print("Device:", device)
+    print("Lang:", args.lang,
+          "| Task:", args.task,
+          "| Mode:", args.mode,
+          "| PEFT:", args.peft)
 
-    # ============================
-    # ENGLISH
-    # ============================
+    # English
     if args.lang == "english":
-        loader = {
+
+        loader_map = {
             "A": load_task_a_english,
             "B": load_task_b_english,
             "C": load_task_c_english,
-        }[args.task]
+        }
 
-        train_df, dev_df = loader()
+        train_df, dev_df = loader_map[args.task]()
         num_labels = 2 if args.task != "C" else 3
 
         train_transformer(
@@ -69,35 +105,35 @@ def main():
             mode=args.mode,
             few_shot_k=args.k,
             config=config,
-            device=device
+            device=device,
+            peft_type=args.peft
         )
         return
 
-    # ============================
-    # ARABIC
-    # ============================
+    # Arabic (Task A only)
     if args.task != "A":
-        raise ValueError("Arabic supports Task A only")
+        raise ValueError("Arabic only supports Task A")
 
-    # ---- ZERO-SHOT ----
     if args.mode == "zero-shot":
-        ar_train, ar_dev = load_task_a_arabic()
+        train_df, dev_df = load_task_a_arabic()
 
         train_transformer(
             model_name=MODEL_MAP["arabic"],
-            train_df=ar_train,
-            dev_df=ar_dev,
+            train_df=train_df,
+            dev_df=dev_df,
             num_labels=2,
             language="arabic",
             mode="zero-shot",
             few_shot_k=None,
             config=config,
-            device=device
+            device=device,
+            peft_type=args.peft
         )
         return
 
-    # ---- FEW-SHOT WITH TRANSFER ----
-    print("Stage 1: English pretraining for transfer...")
+    # few-shot with English pretraining
+    print("Pretraining on English first...")
+
     en_train, en_dev = load_task_a_english()
 
     model = train_transformer(
@@ -110,10 +146,12 @@ def main():
         few_shot_k=None,
         config=config,
         device=device,
-        return_model=True
+        return_model=True,
+        peft_type=args.peft
     )
 
-    print("Stage 2: Arabic few-shot fine-tuning...")
+    print("Fine-tuning on Arabic...")
+
     ar_train, ar_dev = load_task_a_arabic()
 
     train_transformer(
@@ -126,7 +164,8 @@ def main():
         few_shot_k=args.k,
         config=config,
         device=device,
-        model=model
+        model=model,
+        peft_type=args.peft
     )
 
 

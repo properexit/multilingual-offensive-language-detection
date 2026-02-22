@@ -1,66 +1,43 @@
-# =========================
 # Python
-# =========================
 __pycache__/
-*.py[cod]
+*.pyc
 *.pyo
 *.pyd
 *.egg-info/
-.env
-.venv/
+
+# Virtual environments
 venv/
 venv-offensive/
-ENV/
-.envrc
+.venv/
+.env
 
-# =========================
-# Jupyter / IPython
-# =========================
+# Jupyter
 .ipynb_checkpoints/
 
-# =========================
-# OS files
-# =========================
+# OS
 .DS_Store
 Thumbs.db
 
-# =========================
 # Editors
-# =========================
 .vscode/
 .idea/
-*.swp
 
-# =========================
-# Logs & outputs
-# =========================
+# Logs / outputs
 logs/
 outputs/
 runs/
 checkpoints/
 *.log
 
-# =========================
-# Data (IMPORTANT)
-# =========================
+# Data (raw and processed)
 data/raw/
 data/processed/
 
-# =========================
-# Hugging Face cache
-# =========================
-.cache/
-hf_cache/
-~/.cache/huggingface/
-
-# =========================
-# Torch artifacts
-# =========================
+# Model files
 *.pt
 *.pth
 *.ckpt
 
-# =========================
-# YAML backups
-# =========================
-*.yaml~
+# Cache
+.cache/
+hf_cache/
